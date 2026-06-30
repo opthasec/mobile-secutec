@@ -11,6 +11,7 @@ import Svg, { Circle, G, Line, Path } from 'react-native-svg';
 import { useWorkday } from './_layout';
 import { WebView } from 'react-native-webview';
 import { Modal } from 'react-native';
+import locationTrackingService from '@/services/location/locationTrackingService';
 
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -151,7 +152,17 @@ export default function WorkdayScreen() {
       const data = await visitaService.getActiva();
       setVisitaActiva(data);
 
-      // Si hay una jornada activa, actualizamos también la lista de visitas
+      // Sincronizamos con el background task para el recordatorio de salida
+      if (data.activa && data.visita) {
+        await locationTrackingService.setVisitaActiva({
+          id: data.visita.id,
+          entrada: data.visita.entrada,
+          objetivo_nombre: data.visita.objetivo_nombre,
+        });
+      } else {
+        await locationTrackingService.setVisitaActiva(null);
+      }
+
       if (jornadaData?.id) {
         refreshJornadaDetails(jornadaData.id);
       }
@@ -434,7 +445,7 @@ export default function WorkdayScreen() {
       }
 
       setIsWorkdayActive(false);
-      
+
       // Forzamos la re-verificación del estado global para evitar inconsistencias.
       await checkWorkdayStatus();
 
