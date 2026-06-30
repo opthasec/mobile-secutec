@@ -35,6 +35,12 @@ const EmptyActivitiesIcon = () => (
   </Svg>
 );
 
+const ClockWaitIcon = () => (
+  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+    <Path d="M12 7V12L15 15M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="#8E8E93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
 const HistoryActionIcon = ({ color = APP_STORE_BLUE }: { color?: string }) => (
   <Svg width="20" height="20" viewBox="0 0 16 16" fill="none">
     <G fill={color}>
@@ -100,6 +106,7 @@ export default function WorkdayScreen() {
   }>({ activa: false });
 
   const [duracionSupervision, setDuracionSupervision] = useState<string>('');
+  const [canFinalizeSupervision, setCanFinalizeSupervision] = useState(false);
   const [visitasAnteriores, setVisitasAnteriores] = useState<any[]>([]);
   const [escaneosCount, setEscaneosCount] = useState<number>(0);
 
@@ -180,11 +187,16 @@ export default function WorkdayScreen() {
       const tick = () => {
         const start = new Date(visitaActiva.visita!.entrada).getTime();
         const now = Date.now();
-        const diff = Math.floor((now - start) / 1000);
-        setDuracionSupervision(formatDuracion(diff));
+        const diffSeconds = Math.floor((now - start) / 1000);
+        setDuracionSupervision(formatDuracion(diffSeconds));
+        // Check if duration is >= 5 minutes (300 seconds)
+        setCanFinalizeSupervision(diffSeconds >= 300);
       };
       tick();
       interval = setInterval(tick, 1000); // Cada segundo
+    } else {
+      // Reset when no active visit
+      setCanFinalizeSupervision(false);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -831,7 +843,7 @@ export default function WorkdayScreen() {
                 {visitaActiva.visita?.objetivo_nombre}
               </ThemedText>
               <ThemedText style={styles.objectiveSubtitle}>
-                Supervisaste por ( {duracionSupervision || '0h 00m 00s'} ) este objetivo
+                Supervisaste por ( {duracionSupervision || '0h 00m 00s'} ) este objetivo.
               </ThemedText>
             </View>
           </View>
@@ -846,21 +858,30 @@ export default function WorkdayScreen() {
         </ThemedText>
 
         <View style={styles.actionsContainer}>
-          <TouchableOpacity
-            style={[styles.qrButton, visitaActiva.activa && styles.qrButtonFinalizando]}
-            activeOpacity={0.8}
-            onPress={() => {
-              if (visitaActiva.activa) {
-                setShowEndSupervisionModal(true);
-              } else { handleOpenScanner(); }
-            }}
-          >
-            <ThemedText style={styles.qrButtonText}>
-              {visitaActiva.activa
-                ? `Finalizar supervisión`
-                : 'Iniciar supervisión por QR'}
-            </ThemedText>
-          </TouchableOpacity>
+          {visitaActiva.activa ? (
+            canFinalizeSupervision ? (
+              <TouchableOpacity
+                style={[styles.qrButton, styles.qrButtonFinalizando]}
+                activeOpacity={0.8}
+                onPress={() => setShowEndSupervisionModal(true)}
+              >
+                <ThemedText style={styles.qrButtonText}>Finalizar supervisión</ThemedText>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.waitCard}>
+                <ClockWaitIcon />
+                <ThemedText style={styles.waitCardText}>
+                  Debe permanecer al menos 5 minutos.
+                </ThemedText>
+              </View>
+            )
+          ) : (
+            <TouchableOpacity style={styles.qrButton} activeOpacity={0.8} onPress={handleOpenScanner}>
+              <ThemedText style={styles.qrButtonText}>
+                Iniciar supervisión por QR
+              </ThemedText>
+            </TouchableOpacity>
+          )}
 
           {!visitaActiva.activa && (
             <TouchableOpacity
@@ -1135,7 +1156,23 @@ const styles = StyleSheet.create({
   qrButtonFinalizando: {
     backgroundColor: '#FF6B6B',
   },
-
+  waitCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    height: 56,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    gap: 12,
+    borderWidth: 1.5,
+    borderColor: '#e7eaec',
+  },
+  waitCardText: {
+    flex: 1,
+    color: '#8E8E93',
+    fontSize: 15,
+    fontWeight: '400',
+  },
   // Estilos para el Historial en Mapa
   historyMapButton: {
     position: 'absolute',

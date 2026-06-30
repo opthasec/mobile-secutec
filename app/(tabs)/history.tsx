@@ -287,10 +287,10 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 34, fontWeight: 'bold', color: '#000' },
   subtitle: { fontSize: 15, color: '#8E8E93', marginTop: 5 },
-  sectionContainer: { marginTop: 10, flex: 1 }, // ← flex: 1 agregado
+  sectionContainer: { marginTop: 10, flex: 1, marginBottom: 21}, // ← flex: 1 agregado
   groupCard: {
     backgroundColor: 'white', borderRadius: 12, marginHorizontal: 16,
-    overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    overflow: 'hidden', shadowColor: '#00000067', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04, shadowRadius: 10, elevation: 2,
   },
   tableHeader: {
