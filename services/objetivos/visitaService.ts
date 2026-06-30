@@ -1,5 +1,4 @@
 import authService from '@/services/authentication/authService';
-import { authenticatedRequestWithRetry } from '@/utils/network';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -7,7 +6,7 @@ class VisitaService {
     async registrar(qrToken: string, lat: number, lng: number) {
         try {
             const endpoint = `${API_BASE_URL}/api/visitas/registrar/`;
-            const response = await authenticatedRequestWithRetry(
+            const response = await authService.authenticatedRequest(
                 endpoint,
                 {
                     method: 'POST',
@@ -34,7 +33,7 @@ class VisitaService {
     async finalizar(visitaId: number, lat: number, lng: number) {
         try {
             const endpoint = `${API_BASE_URL}/api/visitas/finalizar/`;
-            const response = await authenticatedRequestWithRetry(
+            const response = await authService.authenticatedRequest(
                 endpoint,
                 {
                     method: 'POST',

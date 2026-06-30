@@ -1,5 +1,4 @@
 import authService from '@/services/authentication/authService';
-import { authenticatedRequestWithRetry } from '@/utils/network';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -24,7 +23,7 @@ class JornadaService {
       lng_inicio: parseFloat(lng.toFixed(6)),
     };
     try {
-      const response = await authenticatedRequestWithRetry(
+      const response = await authService.authenticatedRequest(
         `${API_BASE_URL}/api/jornadas/iniciar/`,
         {
           method: 'POST',
@@ -47,7 +46,7 @@ class JornadaService {
 
   async finalizar(lat: number, lng: number) {
     try {
-      const response = await authenticatedRequestWithRetry(
+      const response = await authService.authenticatedRequest(
         `${API_BASE_URL}/api/jornadas/finalizar/`,
         {
           method: 'POST',
