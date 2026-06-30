@@ -340,7 +340,7 @@ export default function WorkdayScreen() {
 
       const result: any = await visitaService.registrar(data, loc.coords.latitude, loc.coords.longitude);
       console.log('Respuesta de visitaService.registrar:', result);
-      alert(result.detail);
+      alert(result?.detail ?? 'Supervisión registrada correctamente.');
       await checkVisitaActiva(); // ← actualiza el botón
     } catch (e: any) {
       console.error('Error en visitaService.registrar:', e);
@@ -380,7 +380,7 @@ export default function WorkdayScreen() {
         loc.coords.longitude
       );
 
-      alert(result.detail);
+      alert(result?.detail ?? 'Supervisión finalizada correctamente.');
       await checkVisitaActiva(); // Actualiza el estado de la UI
     } catch (e: any) {
       console.error('Error en visitaService.finalizar:', e);
