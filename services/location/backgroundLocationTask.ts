@@ -11,8 +11,8 @@ const KEY_VISITA_ACTIVA = 'bg:visita_activa'; // { id, entrada (ISO), objetivo_n
 const KEY_ULTIMO_RECORDATORIO_SALIDA = 'bg:ultimo_recordatorio_salida'; // ISO de la última vez que avisamos
 
 const RADIO_ALERTA_METROS = 300;
-const HORAS_RECORDATORIO_SALIDA = 2;
-const COOLDOWN_RECORDATORIO_SALIDA_MIN = 30; // no repetir el aviso antes de 30 min
+const HORAS_RECORDATORIO_SALIDA = 0.05; // ~3 minutos
+const COOLDOWN_RECORDATORIO_SALIDA_MIN = 1; // no repetir el aviso antes de 1 min
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371000;

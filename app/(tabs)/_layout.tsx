@@ -153,22 +153,24 @@ export default function TabLayout() {
         accuracy: Location.Accuracy.Balanced,
       });
 
-      // 4. Iniciar jornada con hasta 3 reintentos
-      let attempts = 0;
-      const maxAttempts = 3;
-      while (attempts < maxAttempts) {
-        try {
-          await jornadaService.iniciar(loc.coords.latitude, loc.coords.longitude);
-          // Si tiene éxito, salimos del bucle
-          break;
-        } catch (error) {
-          attempts++;
-          if (attempts >= maxAttempts) {
-            throw error; // Si se superan los intentos, lanzamos el último error
-          }
-          // Esperamos 1 segundo antes de reintentar
-          await new Promise(resolve => setTimeout(resolve, 1000));
+      // 4. Iniciar jornada.
+      // OJO: el retry ante errores de red/5xx ya lo maneja internamente
+      // jornadaService.iniciar() (vía authenticatedRequestWithRetry).
+      // NO reintentamos acá manualmente: si el primer intento falla con un 4xx
+      // (ej. "ya existe una jornada activa"), reintentar solo generaba más 400s
+      // en cadena sin solucionar nada.
+      try {
+        await jornadaService.iniciar(loc.coords.latitude, loc.coords.longitude);
+      } catch (error: any) {
+        const msg = (error?.message || '').toLowerCase();
+        // Si el backend dice que ya hay una jornada activa, no es un fallo real:
+        // sincronizamos el estado local y seguimos como si hubiera iniciado bien.
+        if (msg.includes('ya existe') || msg.includes('activa')) {
+          setIsWorkdayActive(true);
+          closeWorkdayModal();
+          return;
         }
+        throw error; // cualquier otro error sí se propaga y se muestra al usuario
       }
 
       // 5. Actualizar estado y navegar si todo fue exitoso

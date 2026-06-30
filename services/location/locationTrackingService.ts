@@ -17,7 +17,12 @@ class LocationTrackingService {
             console.warn('Permiso de ubicación en background no concedido.');
         }
 
-        await notificationService.requestPermissions();
+        const notificationPermissions = await Location.getForegroundPermissionsAsync();
+        if (notificationPermissions.status !== 'granted') {
+            // Solo pedimos si no los tenemos ya
+            await notificationService.requestPermissions();
+        }
+
         await this.refreshPendientes();
 
         const yaRegistrado = await TaskManager.isTaskRegisteredAsync(BACKGROUND_LOCATION_TASK);
@@ -25,7 +30,7 @@ class LocationTrackingService {
 
         await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
             accuracy: Location.Accuracy.Balanced,
-            timeInterval: 5 * 60 * 1000, // chequeo cada 5 min (también para el timer de salida)
+            timeInterval: 60 * 1000, // chequeo cada 1 min (también para el timer de salida)
             distanceInterval: 50, // o cuando se mueva 50m
             showsBackgroundLocationIndicator: true,
             foregroundService: {

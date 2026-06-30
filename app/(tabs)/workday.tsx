@@ -172,8 +172,8 @@ export default function WorkdayScreen() {
   }, [jornadaData?.id, refreshJornadaDetails]);
 
   // ── Todos los hooks ANTES de cualquier return ──
-
   // Timer para la duración de la supervisión actual
+    
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
     if (visitaActiva.activa && visitaActiva.visita) {
