@@ -1,4 +1,5 @@
 import { Tabs, useRouter } from 'expo-router';
+import locationTrackingService from '@/services/location/locationTrackingService';
 import jornadaService from '@/services/jornadas/jornadaService';
 import * as Location from 'expo-location';
 import React, { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
@@ -191,6 +192,14 @@ export default function TabLayout() {
       router.push('/workday');
     }
   }, [isWorkdayActive, isModalVisible, router]);
+
+  useEffect(() => {
+    if (isWorkdayActive) {
+        locationTrackingService.start();
+    } else {
+        locationTrackingService.stop();
+    }
+}, [isWorkdayActive]);
 
   return (
     <WorkdayContext.Provider value={{ isWorkdayActive, setIsWorkdayActive, isScannerActive, setIsScannerActive, checkWorkdayStatus }}>
