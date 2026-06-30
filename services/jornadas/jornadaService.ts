@@ -36,8 +36,19 @@ class JornadaService {
       }
       return await response.json();
     } catch (error: any) {
-      // Capturamos el error de red y lanzamos uno más amigable
+      // Si el fetch falló a nivel red (timeout, conexión cortada, etc.), el POST
+      // puede haber llegado igual al backend y haber creado la jornada, pero la
+      // respuesta nunca volvió al cliente. Antes de reportar el error, verificamos
+      // contra el backend si la jornada quedó iniciada de todas formas.
       if (error instanceof TypeError && error.message === 'Network request failed') {
+        try {
+          const activa = await this.getActiva();
+          if (activa?.activa) {
+            return activa; // El backend sí la creó; devolvemos como si hubiese funcionado.
+          }
+        } catch {
+          // Si el recheck también falla (sin conexión real), seguimos al error de abajo.
+        }
         throw new Error('Error de red. No se pudo iniciar la jornada.');
       }
       throw error; // Re-lanzamos otros errores
