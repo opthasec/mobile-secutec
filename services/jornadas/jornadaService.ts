@@ -73,7 +73,19 @@ class JornadaService {
       }
       return await response.json();
     } catch (error: any) {
+      // Mismo caso que en iniciar(): el POST puede haber llegado al backend
+      // y haber finalizado la jornada, pero la respuesta no volvió a tiempo.
+      // Verificamos si efectivamente ya no hay jornada activa.
       if (error instanceof TypeError && error.message === 'Network request failed') {
+        try {
+          const activa = await this.getActiva();
+          if (!activa?.activa) {
+            // Ya no hay jornada activa: el backend la finalizó correctamente.
+            return { finalizada: true };
+          }
+        } catch {
+          // Si el recheck también falla, seguimos al error de abajo.
+        }
         throw new Error('Error de red. No se pudo finalizar la jornada.');
       }
       throw error;

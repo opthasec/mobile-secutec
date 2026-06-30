@@ -56,11 +56,33 @@ class AuthService {
     }
   }
 
+  // ⏱️ FETCH CON TIMEOUT
+  // Envuelve fetch con un AbortController. Si la respuesta no llega en
+  // `timeoutMs`, se cancela el request y se lanza un error con el mismo
+  // mensaje que un fallo de red real ('Network request failed'), para que
+  // los services que ya manejan ese caso (ej. jornadaService) sigan
+  // funcionando sin cambios.
+  private async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new TypeError('Network request failed');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   // 🔐 LOGIN — solo supervisores
   async login(username: string, password: string): Promise<LoginResult> {
     const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
-    const response = await fetch(`${API_BASE_URL}/api/login/`, {
+    const response = await this.fetchWithTimeout(`${API_BASE_URL}/api/login/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -89,7 +111,7 @@ class AuthService {
     const refreshToken = await this.getRefreshToken();
     if (!refreshToken) throw new Error('No refresh token');
 
-    const response = await fetch(`${API_BASE_URL}/api/refresh/`, {
+    const response = await this.fetchWithTimeout(`${API_BASE_URL}/api/refresh/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh: refreshToken }),
@@ -122,7 +144,7 @@ class AuthService {
       token = await this.refreshToken();
     }
 
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       ...options,
       headers: {
         ...options.headers,
@@ -134,7 +156,7 @@ class AuthService {
     if (response.status === 401) {
       try {
         token = await this.refreshToken();
-        return await fetch(url, {
+        return await this.fetchWithTimeout(url, {
           ...options,
           headers: {
             ...options.headers,
