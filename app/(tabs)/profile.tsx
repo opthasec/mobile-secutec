@@ -10,12 +10,12 @@ import { useCallback } from 'react';
 
 import {
   ActivityIndicator,
-  Image,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
   TextInput,
+  RefreshControl,
   Modal,
 } from 'react-native';
 
@@ -28,6 +28,7 @@ const SEPARATOR_COLOR = '#C6C6C8';
 export default function ProfileScreen() {
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -41,15 +42,25 @@ export default function ProfileScreen() {
 
   const [showObjectivesModal, setShowObjectivesModal] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      supervisorService.getMe()
-        .then(setUserData)
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    }, [])
-  );
+  const fetchUserData = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
+    try {
+      const data = await supervisorService.getMe();
+      setUserData(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { fetchUserData(true); }, [fetchUserData]));
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchUserData();
+    setRefreshing(false);
+  }, [fetchUserData]);
 
   const handleLogout = async () => {
     await authService.logout();
@@ -325,6 +336,9 @@ export default function ProfileScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={IOS_BLUE} />
+        }
       >
         <View style={styles.avatarSection}>
           <View style={styles.imageWrapper}>

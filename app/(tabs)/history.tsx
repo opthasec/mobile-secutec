@@ -1,15 +1,15 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Ionicons } from '@expo/vector-icons';
-import jornadaService from '@/services/jornadas/jornadaService';
 import { useFocusEffect } from 'expo-router';
-
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   ActivityIndicator, FlatList, Modal, ScrollView, RefreshControl,
   StyleSheet, TouchableOpacity, View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import jornadaService from '@/services/jornadas/jornadaService';
 
 const HistoryDecorationIcon = () => (
   <Svg width="30" height="34" viewBox="0 0 30 34" fill="none">
@@ -73,6 +73,7 @@ export default function TabTwoScreen() {
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -117,18 +118,18 @@ export default function TabTwoScreen() {
 
   const renderItem = ({ item }: { item: Jornada }) => (
     <TouchableOpacity style={styles.row} activeOpacity={0.7} onPress={() => handleVerDetalle(item)}>
-      <View style={{ flex: 1.5, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={styles.cellFecha}>
         <View style={styles.statusDot} />
         <ThemedText style={styles.dateText} numberOfLines={1}>
           {formatFecha(item.inicio)}
         </ThemedText>
       </View>
-      <View style={{ flex: 1.8 }}>
+      <View style={styles.cellHorario}>
         <ThemedText style={styles.rangeText} numberOfLines={1}>
           {formatHora(item.inicio)} - {formatHora(item.fin)}
         </ThemedText>
       </View>
-      <View style={{ flex: 1.1, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
+      <View style={{ width: 80, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4}}>
         <ThemedText style={styles.durationText}>
           {formatDuracion(item.duracion_segundos)}
         </ThemedText>
@@ -139,7 +140,7 @@ export default function TabTwoScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <View style={styles.titleRow}>
           <ThemedText type="title" style={styles.title}>Historial</ThemedText>
           <HistoryDecorationIcon />
@@ -167,9 +168,9 @@ export default function TabTwoScreen() {
             showsVerticalScrollIndicator={false}
             ListHeaderComponent={
               <View style={styles.tableHeader}>
-                <ThemedText style={[styles.columnLabel, { flex: 1.5, paddingLeft: 14 }]}>FECHA</ThemedText>
-                <ThemedText style={[styles.columnLabel, { flex: 1.8 }]}>HORARIO</ThemedText>
-                <ThemedText style={[styles.columnLabel, { flex: 1.1, textAlign: 'right', paddingRight: 18 }]}>TOTAL</ThemedText>
+                <ThemedText style={[styles.columnLabel, { flex: 1, paddingLeft: 14 }]}>FECHA</ThemedText>
+                <ThemedText style={[styles.columnLabel, { flex: 1, paddingLeft: 20 }]}>HORARIO</ThemedText>
+                <ThemedText style={[styles.columnLabel, { width: 80, textAlign: 'right', paddingRight: 18 }]}>TOTAL</ThemedText>
               </View>
             }
             ListEmptyComponent={
@@ -282,7 +283,7 @@ export default function TabTwoScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F2F2F7' },
-  header: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20 },
+  header: { paddingHorizontal: 20, paddingBottom: 20 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 34, fontWeight: 'bold', color: '#000' },
   subtitle: { fontSize: 15, color: '#8E8E93', marginTop: 5 },
@@ -293,10 +294,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04, shadowRadius: 10, elevation: 2,
   },
   tableHeader: {
-    flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12,
+    flexDirection: 'row', paddingVertical: 12,
     backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F2F2F7',
   },
-  columnLabel: { fontSize: 11, fontWeight: '600', color: '#C6C6C8', letterSpacing: 0.5 },
+  columnLabel: { fontSize: 11, fontWeight: '600', color: '#8E8E93', letterSpacing: 0.5 },
   row: { flexDirection: 'row', paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' },
   dateText: { fontSize: 16, fontWeight: '500', color: '#1C1C1E' },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#56b867' },
@@ -304,6 +305,19 @@ const styles = StyleSheet.create({
   durationText: { fontSize: 15, fontWeight: '600', color: '#4D92E4' },
   separator: { height: 1, backgroundColor: '#F2F2F7' },
   emptyText: { textAlign: 'center', padding: 24, color: '#8E8E93' },
+  // Celdas de la tabla
+  cellFecha: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingRight: 8,
+  },
+  cellHorario: {
+    flex: 1,
+    paddingLeft: 20,
+    paddingRight: 8,
+  },
 
   // Modal
   modalContainer: { flex: 1, backgroundColor: 'white', paddingHorizontal: 20, paddingTop: 20 },
@@ -337,10 +351,10 @@ const styles = StyleSheet.create({
   visitaDireccion: { fontSize: 13, color: '#8E8E93', marginBottom: 12 },
   visitaHorarios: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   visitaHorarioItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  visitaBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
-  visitaBadgeEntrada: { backgroundColor: '#E8F5E9' },
-  visitaBadgeSalida: { backgroundColor: '#FFF3E0' },
-  visitaBadgeEnCurso: { backgroundColor: '#E3F2FD' },
+  visitaBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  visitaBadgeEntrada: { backgroundColor: '#E8F5E9', borderColor: 'rgba(163, 201, 164, 0.47)' },
+  visitaBadgeSalida: { backgroundColor: '#FFF3E0', borderColor: '#ebdabe' },
+  visitaBadgeEnCurso: { backgroundColor: '#E3F2FD', borderColor: '#90CAF9' },
   visitaBadgeText: { fontSize: 10, fontWeight: '700', color: '#555' },
   visitaHoraText: { fontSize: 14, fontWeight: '500', color: '#1C1C1E' },
   visitaDuracion: { fontSize: 13, color: '#4D92E4', fontWeight: '600', marginLeft: 'auto' },

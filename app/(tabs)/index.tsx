@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View, Modal } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View, Modal, RefreshControl } from 'react-native';
 import supervisorService from '@/services/supervisores/supervisorService';
 import jornadaService from '@/services/jornadas/jornadaService';
 import reunionService, { Reunion } from '@/services/reuniones/reunionService';
@@ -48,34 +48,42 @@ export default function HomeScreen() {
   // ✅ reuniones reales
   const [reunionesMap, setReunionesMap] = useState<Record<string, Reunion[]>>({});
 
+  const [refreshing, setRefreshing] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [historialMes, setHistorialMes] = useState<{ horas: number; jornadas: number }>({ horas: 0, jornadas: 0 });
 
   // Carga de reuniones cuando cambia el mes
   const fetchReuniones = useCallback(async () => {
+    // Solo cargar reuniones si tenemos el ID del usuario.
+    if (!userData?.user_id) return;
+
     const year = currentDate.getFullYear();
     const month = String(currentDate.getMonth() + 1).padStart(2, '0');
     const mes = `${year}-${month}`;
     try {
-      const data = await reunionService.getByMonth(mes);
+      const todasLasReuniones = await reunionService.getMyMeetingsByMonth(mes);
+
+      // Filtramos en el cliente para mostrar solo las reuniones del usuario.
+      const misReuniones = todasLasReuniones.filter(r => {
+        return (
+          r.todos_los_supervisores ||
+          (userData?.id && r.supervisores.includes(userData.id))
+        );
+      });
+
       const map: Record<string, Reunion[]> = {};
-      data.forEach(r => {
+      misReuniones.forEach(r => {
         if (!map[r.fecha]) map[r.fecha] = [];
         map[r.fecha].push(r);
       });
       setReunionesMap(map);
     } catch (err) {
-      console.error('Error cargando reuniones:', err);
     }
-  }, [currentDate]);
+  }, [currentDate, userData]);
 
   useEffect(() => { fetchReuniones(); }, [fetchReuniones]);
 
-  useEffect(() => {
-    supervisorService.getMe().then(setUserData).catch(console.error);
-  }, []);
-
-  useEffect(() => {
+  const fetchJornadas = useCallback(() => {
     jornadaService.getHistorial()
       .then((data: any[]) => {
         const ahora = new Date();
@@ -98,6 +106,22 @@ export default function HomeScreen() {
         setJornadaFechas(new Set(Object.keys(map)));
       })
       .catch(() => { });
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    // Ejecutamos todas las cargas de datos en paralelo
+    // Primero obtenemos el usuario, y LUEGO las reuniones que dependen de él.
+    const user = await supervisorService.getMe();
+    setUserData(user);
+    // fetchReuniones y fetchJornadas pueden correr en paralelo
+    await Promise.all([fetchReuniones(), fetchJornadas()]);
+    setRefreshing(false);
+  }, [fetchReuniones, fetchJornadas]);
+
+  useEffect(() => {
+    // Carga inicial de datos al montar el componente
+    onRefresh();
   }, []);
 
   const calendarData = useMemo(() => {
@@ -191,7 +215,13 @@ export default function HomeScreen() {
   }, [todayDateString, reunionesMap]);
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={APP_STORE_BLUE} />
+      }
+    >
       <View style={styles.header}>
         <ThemedText style={styles.greeting}>Hola, {userData?.first_name}</ThemedText>
       </View>
@@ -350,7 +380,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F2F2F7' },
-  header: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20 },
+  header: { paddingTop: 35, paddingHorizontal: 20, paddingBottom: 20 },
   greeting: { fontSize: 15, color: '#8E8E93', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
   section: { paddingHorizontal: 16, marginTop: 10 },
   calendarCard: {

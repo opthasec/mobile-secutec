@@ -3,6 +3,7 @@ import jornadaService from '@/services/jornadas/jornadaService';
 import * as Location from 'expo-location';
 import React, { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   Modal,
@@ -28,6 +29,7 @@ const WorkdayContext = createContext({
   setIsWorkdayActive: (val: boolean) => { },
   isScannerActive: false, // Nuevo: para controlar la visibilidad del escáner
   setIsScannerActive: (val: boolean) => { }, // Nuevo: para controlar la visibilidad del escáner
+  checkWorkdayStatus: async () => { }, // Nuevo: para refrescar el estado
 });
 
 export const useWorkday = () => useContext(WorkdayContext);
@@ -89,42 +91,11 @@ export default function TabLayout() {
   const [isScannerActive, setIsScannerActive] = useState(false); // Nuevo estado para el escáner
   const [isWorkdayActive, setIsWorkdayActive] = useState(false); // Estado local que alimentará al context
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isStartingWorkday, setIsStartingWorkday] = useState(false);
 
   // Valor animado para controlar la opacidad del fondo oscuro
   const bgOpacity = useRef(new Animated.Value(0)).current;
   const router = useRouter();
-
-  const startWorkday = useCallback(async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        alert('Se necesitan permisos de ubicación para iniciar la jornada.');
-        return;
-      }
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      console.log('coords:', loc.coords.latitude, loc.coords.longitude);
-      
-      await jornadaService.iniciar(loc.coords.latitude, loc.coords.longitude);
-      setIsWorkdayActive(true);
-      closeWorkdayModal();
-      router.push('/workday');
-    } catch (e: any) {
-      alert(e.message || 'No se pudo iniciar la jornada.');
-    }
-  }, [bgOpacity, router]);
-
-  const openWorkdayModal = useCallback(() => {
-    setIsModalVisible(true);
-    // Animamos el fondo para que aparezca suavemente
-    Animated.timing(bgOpacity, {
-      toValue: 1,
-      duration: 450, // Duración de la transición
-      delay: 150,    // ESTO ES LA CLAVE: Espera a que el modal suba un poco antes de oscurecer
-      useNativeDriver: false, // backgroundColor no soporta native driver
-    }).start();
-  }, [bgOpacity]);
 
   const closeWorkdayModal = useCallback(() => {
     // Primero desvanecemos el fondo y luego cerramos el modal para que sea fluido
@@ -137,14 +108,92 @@ export default function TabLayout() {
     });
   }, [bgOpacity]);
 
-  useEffect(() => {
-    jornadaService.getActiva()
-      .then(data => { if (data.activa) setIsWorkdayActive(true); })
-      .catch(() => { });
+  const openWorkdayModal = useCallback(() => {
+    setIsModalVisible(true);
+    // Animamos el fondo para que aparezca suavemente
+    Animated.timing(bgOpacity, {
+      toValue: 1,
+      duration: 450, // Duración de la transición
+      delay: 150,    // ESTO ES LA CLAVE: Espera a que el modal suba un poco antes de oscurecer
+      useNativeDriver: false, // backgroundColor no soporta native driver
+    }).start();
+  }, [bgOpacity]);
+
+  const checkWorkdayStatus = useCallback(async () => {
+    try {
+      const data = await jornadaService.getActiva();
+      setIsWorkdayActive(data.activa);
+    } catch { }
   }, []);
 
+  const startWorkday = useCallback(async () => {
+    try {
+      setIsStartingWorkday(true); // Muestra el loader en el botón
+
+      // 1. Validar si ya hay una jornada activa antes de intentar crear una nueva.
+      const activeWorkday = await jornadaService.getActiva();
+      if (activeWorkday.activa) {
+        // Si ya hay una jornada, no mostramos alerta.
+        // Simplemente sincronizamos el estado y navegamos a la pantalla de la jornada.
+        setIsWorkdayActive(true); // Sincronizar estado
+        closeWorkdayModal();
+        return;
+      }
+
+      // 2. Pedir permisos de ubicación
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        alert('Se necesitan permisos de ubicación para iniciar la jornada.');
+        return;
+      }
+
+      // 3. Obtener ubicación y iniciar jornada
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      // 4. Iniciar jornada con hasta 3 reintentos
+      let attempts = 0;
+      const maxAttempts = 3;
+      while (attempts < maxAttempts) {
+        try {
+          await jornadaService.iniciar(loc.coords.latitude, loc.coords.longitude);
+          // Si tiene éxito, salimos del bucle
+          break;
+        } catch (error) {
+          attempts++;
+          if (attempts >= maxAttempts) {
+            throw error; // Si se superan los intentos, lanzamos el último error
+          }
+          // Esperamos 1 segundo antes de reintentar
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      // 5. Actualizar estado y navegar si todo fue exitoso
+      setIsWorkdayActive(true);
+      closeWorkdayModal();
+    } catch (e: any) {
+      alert(e.message || 'No se pudo iniciar la jornada. Por favor, intentá de nuevo.');
+    } finally {
+      setIsStartingWorkday(false);
+    }
+  }, [closeWorkdayModal]);
+
+  useEffect(() => {
+    checkWorkdayStatus();
+  }, [checkWorkdayStatus]);
+
+  // Navega a la pantalla de jornada cuando el estado se activa.
+  // Esto asegura que la navegación ocurra DESPUÉS de que el estado se haya propagado.
+  useEffect(() => {
+    if (isWorkdayActive && !isModalVisible) {
+      router.push('/workday');
+    }
+  }, [isWorkdayActive, isModalVisible, router]);
+
   return (
-    <WorkdayContext.Provider value={{ isWorkdayActive, setIsWorkdayActive, isScannerActive, setIsScannerActive }}>
+    <WorkdayContext.Provider value={{ isWorkdayActive, setIsWorkdayActive, isScannerActive, setIsScannerActive, checkWorkdayStatus }}>
       <View style={{ flex: 1 }}>
         <Tabs
           screenOptions={{
@@ -152,7 +201,7 @@ export default function TabLayout() {
             tabBarInactiveTintColor: '#8E8E93', // Gris iOS estándar, muy legible
             headerShown: false,
             tabBarStyle: {
-              height: isScannerActive ? 0 : (IS_SMALL_DEVICE ? 95 : 110),
+              height: isScannerActive ? 0 : (IS_SMALL_DEVICE ? 95 : 82),
               paddingBottom: isScannerActive ? 0 : (IS_SMALL_DEVICE ? 12 : 35),
               paddingTop: isScannerActive ? 0 : 12,
               backgroundColor: 'white',
@@ -315,11 +364,17 @@ export default function TabLayout() {
                 </ThemedText>
 
                 {/* Botón principal azul */}
-                <TouchableOpacity style={styles.mainButton} onPress={startWorkday}>
-                  <ThemedText style={styles.mainButtonText}>Iniciar jornada laboral</ThemedText>
-                  <View style={styles.playIconContainer}>
-                    <PlayIconWhite />
-                  </View>
+                <TouchableOpacity style={styles.mainButton} onPress={startWorkday} disabled={isStartingWorkday}>
+                  {isStartingWorkday ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <>
+                      <ThemedText style={styles.mainButtonText}>Iniciar jornada laboral</ThemedText>
+                      <View style={styles.playIconContainer}>
+                        <PlayIconWhite />
+                      </View>
+                    </>
+                  )}
                 </TouchableOpacity>
               </View>
             </ScrollView>

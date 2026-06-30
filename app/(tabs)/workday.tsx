@@ -6,7 +6,7 @@ import visitaService from '@/services/objetivos/visitaService';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, BackHandler, Dimensions, PanResponder, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, BackHandler, Dimensions, PanResponder, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, G, Line, Path } from 'react-native-svg';
 import { useWorkday } from './_layout';
 import { WebView } from 'react-native-webview';
@@ -76,7 +76,7 @@ const calcDuracionVisita = (entrada: string, salida: string | null) => {
 };
 
 export default function WorkdayScreen() {
-  const { isWorkdayActive, setIsWorkdayActive, setIsScannerActive } = useWorkday();
+  const { isWorkdayActive, setIsWorkdayActive, setIsScannerActive, checkWorkdayStatus } = useWorkday();
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
@@ -87,6 +87,9 @@ export default function WorkdayScreen() {
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showEndSupervisionModal, setShowEndSupervisionModal] = useState(false); // Nuevo: para finalizar supervisión
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [loaderText, setLoaderText] = useState('Procesando...');
 
   const scanAnim = useRef(new Animated.Value(0)).current;
 
@@ -288,47 +291,128 @@ export default function WorkdayScreen() {
   }, [permission, requestPermission]);
 
   const handleBarcodeScanned = useCallback(async ({ data }: { data: string }) => {
+    console.log('--- Iniciando handleBarcodeScanned ---');
+    console.log('Dato del QR escaneado:', data);
     setShowScanner(false);
+    setLoaderText('Registrando supervisión...');
+    setIsProcessing(true); // <-- Mostramos el loader
 
     const { status } = await Location.requestForegroundPermissionsAsync();
+    console.log('Estado del permiso de ubicación:', status);
     if (status !== 'granted') {
       alert('Se necesitan permisos de ubicación para registrar la visita.');
+      setIsProcessing(false); // <-- Ocultamos el loader
       return;
     }
 
     let loc;
     try {
+      console.log('Obteniendo ubicación actual...');
       loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    } catch {
+      console.log('Ubicación obtenida:', loc);
+    } catch (err) {
+      console.error('Error al obtener la ubicación:', err);
       alert('No se pudo obtener la ubicación. Intentá de nuevo.');
+      setIsProcessing(false); // <-- Ocultamos el loader
       return;
     }
 
     try {
-      const result = await visitaService.registrar(data, loc.coords.latitude, loc.coords.longitude);
+      console.log('Llamando a visitaService.registrar con:', {
+        qrData: data,
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      });
+      // Simulamos una pequeña demora para que el loader sea visible
+      // en redes rápidas. Puedes quitar esto si no lo necesitas.
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const result: any = await visitaService.registrar(data, loc.coords.latitude, loc.coords.longitude);
+      console.log('Respuesta de visitaService.registrar:', result);
       alert(result.detail);
       await checkVisitaActiva(); // ← actualiza el botón
     } catch (e: any) {
-      alert(e.message);
+      console.error('Error en visitaService.registrar:', e);
+      alert(e.message || 'No se pudo registrar la supervisión. Verificá tu conexión e intentá de nuevo.');
+    } finally {
+      setIsProcessing(false); // <-- Ocultamos el loader en cualquier caso
     }
   }, [checkVisitaActiva]);
   const handleCloseScanner = useCallback(() => {
     setShowScanner(false);
   }, []);
 
+  // ✅ Nuevo: para finalizar la supervisión sin escanear
+  const handleFinalizarSupervision = useCallback(async () => {
+    if (!visitaActiva.activa || !visitaActiva.visita?.id) {
+      alert('No hay una supervisión activa para finalizar.');
+      return;
+    }
+
+    setShowEndSupervisionModal(false);
+    setLoaderText('Finalizando supervisión...');
+    setIsProcessing(true);
+
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        alert('Se necesitan permisos de ubicación para registrar el egreso.');
+        setIsProcessing(false);
+        return; // <-- Aseguramos que el loader se oculte
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+
+      const result = await visitaService.finalizar(
+        visitaActiva.visita.id,
+        loc.coords.latitude,
+        loc.coords.longitude
+      );
+
+      alert(result.detail);
+      await checkVisitaActiva(); // Actualiza el estado de la UI
+    } catch (e: any) {
+      console.error('Error en visitaService.finalizar:', e);
+      console.error('Detalles del error:', e.message, e.stack);
+      alert(e.message || 'No se pudo finalizar la supervisión. Verificá tu conexión e intentá de nuevo.');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [visitaActiva, checkVisitaActiva]);
+
   // ✅ Movido acá, antes de cualquier return condicional
   const handleFinalizarJornada = useCallback(async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-
       if (status !== 'granted') {
         alert('Se necesitan permisos de ubicación para finalizar la jornada.');
         return;
       }
 
+      setShowConfirmModal(false);
+      setLoaderText('Finalizando jornada...');
+      setIsProcessing(true);
+
+      // Si hay una visita activa, la finalizamos primero.
+      // Esta lógica ahora está DENTRO del try/catch principal.
+      if (visitaActiva.activa && visitaActiva.visita?.id) {
+        const supervisionLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        await visitaService.finalizar(
+          visitaActiva.visita.id,
+          supervisionLoc.coords.latitude,
+          supervisionLoc.coords.longitude
+        );
+        // Refrescamos el estado para que la UI sepa que ya no hay visita activa.
+        await checkVisitaActiva();
+      }
+
+
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
+
+      // Pequeña demora para que el loader sea visible
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       const jornadaFinalizada = await jornadaService.finalizar(
         loc.coords.latitude,
@@ -350,11 +434,17 @@ export default function WorkdayScreen() {
       }
 
       setIsWorkdayActive(false);
+      
+      // Forzamos la re-verificación del estado global para evitar inconsistencias.
+      await checkWorkdayStatus();
 
     } catch (e: any) {
-      alert(e.message || 'No se pudo finalizar la jornada.');
+      console.error('Error en jornadaService.finalizar:', e);
+      alert(e.message || 'No se pudo finalizar la jornada. Verificá tu conexión e intentá de nuevo.');
+    } finally {
+      setIsProcessing(false);
     }
-  }, [setIsWorkdayActive]);
+  }, [setIsWorkdayActive, jornadaData, checkWorkdayStatus, visitaActiva, checkVisitaActiva]);
 
   // ── Returns condicionales DESPUÉS de todos los hooks ──
 
@@ -459,6 +549,53 @@ export default function WorkdayScreen() {
   return (
     <View style={styles.container}>
 
+      {/* Modal de Carga */}
+      <Modal
+        visible={isProcessing}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.loaderCard}>
+            <ActivityIndicator size="large" color={APP_STORE_BLUE} />
+            <ThemedText style={styles.loaderText}>{loaderText}</ThemedText>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de confirmación para FINALIZAR SUPERVISIÓN */}
+      <Modal
+        visible={showEndSupervisionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEndSupervisionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <ThemedText style={styles.modalTitle}>¿Finalizar supervisión?</ThemedText>
+            <ThemedText style={styles.modalSubtitle}>
+              Se registrará el egreso del objetivo{' '}
+              <ThemedText style={{ fontWeight: 'bold' }}>
+                "{visitaActiva.visita?.objetivo_nombre ?? 'actual'}".
+              </ThemedText>
+            </ThemedText>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowEndSupervisionModal(false)}
+              >
+                <ThemedText style={styles.modalCancelText}>Cancelar</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirmButton}
+                onPress={handleFinalizarSupervision}
+              >
+                <ThemedText style={styles.modalConfirmText}>Sí, finalizar</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* Modal de confirmación */}
       <Modal
         visible={showConfirmModal}
@@ -495,10 +632,7 @@ export default function WorkdayScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalConfirmButton}
-                onPress={() => {
-                  setShowConfirmModal(false);
-                  handleFinalizarJornada();
-                }}
+                onPress={handleFinalizarJornada}
               >
                 <ThemedText style={styles.modalConfirmText}>Sí, finalizar</ThemedText>
               </TouchableOpacity>
@@ -694,13 +828,7 @@ export default function WorkdayScreen() {
 
         <ThemedText style={{ color: '#687076', fontSize: 15, lineHeight: 22, marginBottom: 24 }}>
           {visitaActiva.activa ? (
-            <ThemedText style={{ color: '#687076', fontSize: 15 }}>
-              Para finalizar la supervisión en{' '}
-              <ThemedText style={{ fontWeight: 'bold', color: '#687076' }}>
-                "{visitaActiva.visita?.objetivo_nombre ?? 'objetivo'}"
-              </ThemedText>
-              , es necesario escanear nuevamente el código QR de este objetivo.
-            </ThemedText>
+            'Para finalizar la supervisión actual, presiona el botón rojo de abajo.'
           ) : (
             'Escaneá el código QR del objetivo para iniciar el registro de supervisión.'
           )}
@@ -710,7 +838,11 @@ export default function WorkdayScreen() {
           <TouchableOpacity
             style={[styles.qrButton, visitaActiva.activa && styles.qrButtonFinalizando]}
             activeOpacity={0.8}
-            onPress={handleOpenScanner}
+            onPress={() => {
+              if (visitaActiva.activa) {
+                setShowEndSupervisionModal(true);
+              } else { handleOpenScanner(); }
+            }}
           >
             <ThemedText style={styles.qrButtonText}>
               {visitaActiva.activa
@@ -725,7 +857,7 @@ export default function WorkdayScreen() {
               onPress={() => setShowConfirmModal(true)}
               activeOpacity={0.7}
             >
-              <ThemedText style={styles.endButtonText}>Finalizar jornada</ThemedText>
+              <ThemedText style={styles.endButtonText}>Finalizar mi jornada laboral</ThemedText>
             </TouchableOpacity>
           )}
         </View>
@@ -944,7 +1076,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#8E8E93',
+    backgroundColor: '#2c2c2cbe',
   },
   endButtonText: {
     color: 'white',
@@ -1176,5 +1308,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  // Estilos para el loader
+  loaderCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+  },
+  loaderText: {
+    fontSize: 16,
+    color: '#3C3C43',
   },
 });

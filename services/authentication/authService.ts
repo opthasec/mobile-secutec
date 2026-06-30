@@ -4,11 +4,13 @@ interface LoginResult {
   success: boolean;
   role: string;
   username: string;
+  user_id: number;
 }
 
 class AuthService {
   private tokenKey = 'access_token';
   private refreshTokenKey = 'refresh_token';
+  private userIdKey = 'user_id';
 
   // 🔑 TOKENS
   async getToken(): Promise<string | null> {
@@ -19,16 +21,23 @@ class AuthService {
     return await SecureStore.getItemAsync(this.refreshTokenKey);
   }
 
-  async setTokens(accessToken: string, refreshToken: string, role?: string, username?: string): Promise<void> {
+  async getUserId(): Promise<number | null> {
+    const userId = await SecureStore.getItemAsync(this.userIdKey);
+    return userId ? parseInt(userId, 10) : null;
+  }
+
+  async setTokens(accessToken: string, refreshToken: string, role?: string, username?: string, userId?: number): Promise<void> {
     await SecureStore.setItemAsync(this.tokenKey, accessToken);
     await SecureStore.setItemAsync(this.refreshTokenKey, refreshToken);
     if (role) await SecureStore.setItemAsync('role', role);
     if (username) await SecureStore.setItemAsync('username', username);
+    if (userId) await SecureStore.setItemAsync(this.userIdKey, String(userId));
   }
 
   async clearTokens(): Promise<void> {
     await SecureStore.deleteItemAsync(this.tokenKey);
     await SecureStore.deleteItemAsync(this.refreshTokenKey);
+    await SecureStore.deleteItemAsync(this.userIdKey);
     await SecureStore.deleteItemAsync('role');
     await SecureStore.deleteItemAsync('username');
   }
@@ -64,17 +73,13 @@ class AuthService {
 
     const data = await response.json();
 
-    // 🚫 solo supervisores pueden entrar a la app mobile
-    if (data.role !== 'supervisor') {
-      throw new Error('Esta app es solo para supervisores');
-    }
-
-    await this.setTokens(data.access, data.refresh, data.role, data.username);
+    await this.setTokens(data.access, data.refresh, data.role, data.username, data.user_id);
 
     return {
       success: true,
       role: data.role,
       username: data.username,
+      user_id: data.user_id,
     };
   }
 
@@ -96,7 +101,11 @@ class AuthService {
     }
 
     const data = await response.json();
-    await this.setTokens(data.access, refreshToken);
+    // Al refrescar, el payload del nuevo token tiene el user_id. Lo extraemos y guardamos.
+    const payload = JSON.parse(atob(data.access.split('.')[1]));
+    const userId = payload.user_id;
+
+    await this.setTokens(data.access, refreshToken, undefined, undefined, userId);
     return data.access;
   }
 
@@ -147,6 +156,7 @@ class AuthService {
     return {
       role: await SecureStore.getItemAsync('role'),
       username: await SecureStore.getItemAsync('username'),
+      userId: await this.getUserId(),
     };
   }
 

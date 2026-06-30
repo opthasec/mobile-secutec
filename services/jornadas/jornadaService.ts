@@ -1,4 +1,5 @@
 import authService from '@/services/authentication/authService';
+import { authenticatedRequestWithRetry } from '@/utils/network';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -9,7 +10,12 @@ class JornadaService {
       `${API_BASE_URL}/api/jornadas/activa/`
     );
     if (!response.ok) throw new Error('Error al consultar jornada activa');
-    return await response.json();
+    try {
+      return await response.json();
+    } catch (e) {
+      // Si la respuesta no es un JSON válido pero fue exitosa (ej. 204 No Content)
+      return { activa: false };
+    }
   }
 
   async iniciar(lat: number, lng: number) {
@@ -17,43 +23,63 @@ class JornadaService {
       lat_inicio: parseFloat(lat.toFixed(6)),
       lng_inicio: parseFloat(lng.toFixed(6)),
     };
-    const response = await authService.authenticatedRequest(
-      `${API_BASE_URL}/api/jornadas/iniciar/`,
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
+    try {
+      const response = await authenticatedRequestWithRetry(
+        `${API_BASE_URL}/api/jornadas/iniciar/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ detail: 'Error al iniciar jornada' }));
+        throw new Error(data.detail || 'Error al iniciar jornada');
       }
-    );
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Error al iniciar jornada');
+      return await response.json();
+    } catch (error: any) {
+      // Capturamos el error de red y lanzamos uno más amigable
+      if (error instanceof TypeError && error.message === 'Network request failed') {
+        throw new Error('Error de red. No se pudo iniciar la jornada.');
+      }
+      throw error; // Re-lanzamos otros errores
     }
-    return await response.json();
   }
 
   async finalizar(lat: number, lng: number) {
-    const response = await authService.authenticatedRequest(
-      `${API_BASE_URL}/api/jornadas/finalizar/`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          lat_fin: parseFloat(lat.toFixed(6)),
-          lng_fin: parseFloat(lng.toFixed(6)),
-        }),
+    try {
+      const response = await authenticatedRequestWithRetry(
+        `${API_BASE_URL}/api/jornadas/finalizar/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            lat_fin: parseFloat(lat.toFixed(6)),
+            lng_fin: parseFloat(lng.toFixed(6)),
+          }),
+        }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ detail: 'Error al finalizar jornada' }));
+        throw new Error(data.detail || 'Error al finalizar jornada');
       }
-    );
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Error al finalizar jornada');
+      return await response.json();
+    } catch (error: any) {
+      if (error instanceof TypeError && error.message === 'Network request failed') {
+        throw new Error('Error de red. No se pudo finalizar la jornada.');
+      }
+      throw error;
     }
-    return await response.json();
   }
 
   async getHistorial() {
     const response = await authService.authenticatedRequest(
       `${API_BASE_URL}/api/jornadas/historial/`
     );
-    if (!response.ok) throw new Error('Error al obtener historial');
+    if (!response.ok) {
+      // Si la respuesta no es OK, intentamos parsear el error.
+      // Si falla, lanzamos un error genérico.
+      const error = await response.json().catch(() => ({ detail: 'Error al obtener historial' }));
+      throw new Error(error.detail || 'Error al obtener historial');
+    }
     return await response.json();
   }
 
@@ -61,7 +87,12 @@ class JornadaService {
     const response = await authService.authenticatedRequest(
       `${API_BASE_URL}/api/jornadas/${jornadaId}/detalle/`
     );
-    if (!response.ok) throw new Error('Error al obtener detalle de jornada');
+    if (!response.ok) {
+      // Si la respuesta no es OK, intentamos parsear el error.
+      // Si falla, lanzamos un error genérico.
+      const error = await response.json().catch(() => ({ detail: 'Error al obtener detalle de jornada' }));
+      throw new Error(error.detail || 'Error al obtener detalle de jornada');
+    }
     return await response.json();
   }
 }

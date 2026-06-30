@@ -14,9 +14,8 @@ export interface Reunion {
 }
 
 class ReunionService {
-
   // GET /api/reuniones/?mes=YYYY-MM
-  async getByMonth(mes: string): Promise<Reunion[]> {
+  async getMyMeetingsByMonth(mes: string): Promise<Reunion[]> {
     const response = await authService.authenticatedRequest(
       `${API_BASE_URL}/api/reuniones/?mes=${mes}`
     );
