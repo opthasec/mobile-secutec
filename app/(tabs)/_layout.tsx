@@ -19,7 +19,7 @@ import { HapticTab } from '@/components/haptic-tab';
 import { ThemedText } from '@/components/themed-text';
 import { HistorySvgIcon } from '@/components/ui/history-svg-icon';
 import { HomeSvgIcon } from '@/components/ui/home-svg-icon';
-import { MessagesSvgIcon } from '@/components/ui/messages-svg-icon';
+import { ChartSvgIcon } from '@/components/ui/chart-svg-icon';
 import { ProfileSvgIcon } from '@/components/ui/profile-svg-icon';
 import { ScannerSvgIcon } from '@/components/ui/scanner-svg-icon';
 import { Colors } from '@/constants/theme';
@@ -239,11 +239,11 @@ export default function TabLayout() {
           />
 
           <Tabs.Screen
-            name="chats"
+            name="performance"
             options={{
-              title: 'Mensajes',
+              title: 'Rendimiento',
               tabBarIcon: ({ color, focused }) => (
-                <MessagesSvgIcon size={27} color={color} focused={focused} />
+                <ChartSvgIcon size={27} color={color} focused={focused} />
               ),
             }}
           />
