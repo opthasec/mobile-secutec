@@ -1,5 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+
 interface LoginResult {
   success: boolean;
   role: string;
@@ -80,8 +82,6 @@ class AuthService {
 
   // 🔐 LOGIN — solo supervisores
   async login(username: string, password: string): Promise<LoginResult> {
-    const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
-
     const response = await this.fetchWithTimeout(`${API_BASE_URL}/api/login/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -107,7 +107,6 @@ class AuthService {
 
   // 🔄 REFRESH
   async refreshToken(): Promise<string> {
-    const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
     const refreshToken = await this.getRefreshToken();
     if (!refreshToken) throw new Error('No refresh token');
 
@@ -178,13 +177,12 @@ class AuthService {
     return {
       role: await SecureStore.getItemAsync('role'),
       username: await SecureStore.getItemAsync('username'),
-      userId: await this.getUserId(),
+      id: await this.getUserId(),
     };
   }
 
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
     const response = await this.authenticatedRequest(`${API_BASE_URL}/api/change-password/`, {
       method: 'POST',
       body: JSON.stringify({

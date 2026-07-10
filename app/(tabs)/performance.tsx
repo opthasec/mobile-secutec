@@ -1,9 +1,11 @@
 import { ThemedText } from '@/components/themed-text'
 import { Ionicons } from '@expo/vector-icons'
 import { Stack } from 'expo-router'
-import React, { useCallback, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native'
 import Svg, { G, Line, Rect, Text as SvgText } from 'react-native-svg'
+import kpiService, { KPIDia, KPIAnualDia, segundosAHorasDecimal } from '@/services/kpis/kpiService';
+import authService from '@/services/authentication/authService';
 
 // ============================================================================
 // ICONO DE CABECERA
@@ -35,48 +37,6 @@ const TrendUpIcon = ({ color = '#61A475' }: { color?: string }) => (
 type DataPoint = { label: string; value: number; date: string }
 type Period = 'week' | 'month' | 'year'
  
-const getWeekData = (offset: number): DataPoint[] => {
-  const today = new Date()
-  today.setDate(today.getDate() + offset)
-  const dayOfWeek = today.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
-  const startOfWeek = new Date(today)
-  // Adjust to start of the week (Monday)
-  startOfWeek.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
- 
-  const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-  const monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
- 
-  return weekDays.map((label, i) => {
-    const date = new Date(startOfWeek)
-    date.setDate(startOfWeek.getDate() + i)
-    
-    // Para demostración, generamos valores aleatorios para semanas pasadas
-    const value = offset === 0 
-      ? [8, 7, 8, 9, 6, 4, 0][i] // Datos fijos en horas para la semana actual
-      : Math.floor(Math.random() * 9) // 0 a 8 horas para semanas pasadas
- 
-    return {
-      label,
-      value,
-      date: `${date.getDate()} ${monthNames[date.getMonth()]}`,
-    }
-  })
-}
-const STATIC_DATASETS: Record<'month' | 'year', DataPoint[]> = {
-    month: [
-      { label: 'S1', value: 68, date: 'Semana 1' },
-      { label: 'S2', value: 74, date: 'Semana 2' },
-      { label: 'S3', value: 52, date: 'Semana 3' },
-      { label: 'S4', value: 85, date: 'Semana 4' },
-    ],
-    year: [
-      { label: 'E', value: 40, date: 'Enero' }, { label: 'F', value: 55, date: 'Febrero' },
-      { label: 'M', value: 48, date: 'Marzo' }, { label: 'A', value: 63, date: 'Abril' },
-      { label: 'M', value: 70, date: 'Mayo' }, { label: 'J', value: 82, date: 'Junio' },
-      { label: 'J', value: 90, date: 'Julio' },
-    ],
-}
-
 const RECENT_ACTIVITY = [
   { title: '', date: 'Hoy · 09:30', positive: true },
   { title: '', date: 'Ayer · 20:15', positive: true },
@@ -271,18 +231,105 @@ export default function PerformanceScreen() {
   const [period, setPeriod] = useState<Period>('week')
   const [weekOffset, setWeekOffset] = useState(0)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const [data, setData] = useState<DataPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
 
-  const data = useMemo(() => {
-    if (period === 'week') {
-      return getWeekData(weekOffset)
+  useEffect(() => {
+    authService.getUser().then(setUser);
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    if (!user?.id) {
+      setLoading(false); // Si no hay usuario, no hay nada que cargar.
+      return;
     }
-    return STATIC_DATASETS[period]
-  }, [period, weekOffset])
+    setLoading(true);
+    setSelectedIndex(null);
+    try {
+      if (period === 'week') {
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + weekOffset * 7);
+        const weekData: KPIDia[] = await kpiService.getMiRendimientoSemanal(targetDate);
+        
+        const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+        const monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        
+        const dayMap = new Map(weekData.map(d => [new Date(d.dia).getUTCDay(), d]));
+        
+        const startOfWeek = new Date(targetDate);
+        const dayOfWeek = startOfWeek.getDay();
+        startOfWeek.setDate(startOfWeek.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
+        const formattedData = weekDays.map((label, i) => {
+          const date = new Date(startOfWeek);
+          date.setDate(startOfWeek.getDate() + i);
+          const dayIndex = date.getDay();
+          const apiData = dayMap.get(dayIndex === 0 ? 6 : dayIndex -1); // API: 0=Lunes, 6=Domingo
+          
+          return {
+            label,
+            value: apiData ? parseFloat(apiData.horas.toFixed(1)) : 0,
+            date: `${date.getDate()} ${monthNames[date.getMonth()]}`,
+          };
+        });
+        setData(formattedData);
+      } else if (period === 'month') {
+        const now = new Date();
+        const monthData: KPIDia[] = await kpiService.getMensual(now.getMonth() + 1, now.getFullYear(), user.id);
+        
+        // Agrupar por semana
+        const weeks: { [key: number]: number } = {};
+        monthData.forEach(d => {
+          const date = new Date(now.getFullYear(), now.getMonth(), d.dia);
+          const weekNumber = Math.ceil(date.getDate() / 7);
+          if (!weeks[weekNumber]) weeks[weekNumber] = 0;
+          weeks[weekNumber] += d.horas;
+        });
+
+        const formattedData = Object.keys(weeks).map(weekNum => ({
+          label: `S${weekNum}`,
+          value: parseFloat(weeks[parseInt(weekNum)].toFixed(1)),
+          date: `Semana ${weekNum}`,
+        }));
+        setData(formattedData);
+      } else if (period === 'year') {
+        const now = new Date();
+        const yearData: KPIAnualDia[] = await kpiService.getAnual(now.getFullYear(), user.id);
+        
+        const monthMap: { [key: number]: number } = {};
+        yearData.forEach(d => {
+          const month = new Date(d.fecha).getMonth();
+          if (!monthMap[month]) monthMap[month] = 0;
+          monthMap[month] += segundosAHorasDecimal(d.minutos * 60);
+        });
+
+        const monthLabels = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        
+        const formattedData = monthLabels.map((label, i) => ({
+          label,
+          value: monthMap[i] ? parseFloat(monthMap[i].toFixed(1)) : 0,
+          date: monthNames[i],
+        }));
+        setData(formattedData);
+      }
+    } catch (error) {
+      console.error("Error fetching performance data:", error);
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [period, weekOffset, user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [user, period, weekOffset]); // Se ejecuta cuando el usuario o los filtros cambian
   
   const weekDateRange = useMemo(() => {
     if (period !== 'week') return ''
-    const start = data[0].date
-    const end = data[data.length - 1].date
+    const start = data[0]?.date;
+    const end = data[data.length - 1]?.date;
     if (weekOffset === 0) return 'Esta semana'
     if (weekOffset === -7) return 'Semana pasada'
     return `${start} - ${end}`
@@ -290,6 +337,7 @@ export default function PerformanceScreen() {
   
   
   const stats = useMemo(() => {
+    if (!data || data.length === 0) return { total: 0, average: 0, best: { value: 0, date: '-' }, streak: 0 };
     const total = data.reduce((sum, d) => sum + d.value, 0)
     const average = Math.round(total / data.length)
     const best = data.reduce((max, d) => (d.value > max.value ? d : max), data[0])
@@ -321,7 +369,7 @@ export default function PerformanceScreen() {
 
       {/* Tarjetas de estadísticas */}
       <View style={styles.statsGrid}>
-        <StatCard label="Horas totales" value={`${stats.total} hs`} trend="up" />
+        <StatCard label="Horas totales" value={`${stats.total.toFixed(1)} hs`} trend="up" />
         <StatCard label="Promedio" value={`${stats.average.toFixed(1)} hs`} />
         <StatCard label="Racha" value={`${stats.streak} días`} />
         <StatCard label="Mejor día" value={`${stats.best.value} hs · ${stats.best.date}`} />
@@ -332,12 +380,12 @@ export default function PerformanceScreen() {
         <View style={styles.chartHeaderRow}>
           {period === 'week' ? (
             <View style={styles.navHeader}>
-              <TouchableOpacity onPress={() => setWeekOffset(weekOffset - 7)} style={styles.navButton}>
+              <TouchableOpacity onPress={() => setWeekOffset(weekOffset - 1)} style={styles.navButton}>
                 <Ionicons name="chevron-back" size={20} color={BAR_COLOR} />
               </TouchableOpacity>
               <ThemedText style={styles.chartTitle}>{weekDateRange}</ThemedText>
               <TouchableOpacity
-                onPress={() => setWeekOffset(weekOffset + 7)}
+                onPress={() => setWeekOffset(weekOffset + 1)}
                 disabled={weekOffset >= 0}
                 style={styles.navButton}
               >
@@ -355,20 +403,20 @@ export default function PerformanceScreen() {
             </View>
           )}
         </View>
-        <BarChart data={data} selectedIndex={selectedIndex} onSelectBar={setSelectedIndex} />
+        {loading ? (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" color={BAR_COLOR} />
+          </View>
+        ) : (
+          <BarChart data={data} selectedIndex={selectedIndex} onSelectBar={setSelectedIndex} />
+        )}
       </View>
 
       {/* Actividad reciente */}
       <View style={styles.recentSection}>
         <ThemedText style={styles.chartTitle}>Actividad reciente</ThemedText>
         <View style={styles.recentList}>
-          {RECENT_ACTIVITY.map((item, i) => (
-            <View
-              key={i}
-              style={[styles.recentRow, i < RECENT_ACTIVITY.length - 1 && styles.recentRowBorder]}
-            >
-            </View>
-          ))}
+          {/* Esta sección se deja vacía por ahora, ya que los datos eran estáticos */}
         </View>
       </View>
     </ScrollView>
@@ -526,6 +574,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#C6C6C8',
   },
+  loaderContainer: {
+    height: CHART_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
 
   // Actividad reciente
   recentSection: {

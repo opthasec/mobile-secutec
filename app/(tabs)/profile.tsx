@@ -23,6 +23,7 @@ const IOS_BG = '#f5f5f5';
 const IOS_BLUE = '#007AFF';
 const IOS_RED = '#FF3B30';
 const IOS_GRAY = '#8E8E93';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 const SEPARATOR_COLOR = '#C6C6C8';
 
 export default function ProfileScreen() {
@@ -102,7 +103,6 @@ export default function ProfileScreen() {
     }
     try {
       setPhoneLoading(true);
-      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
       const response = await authService.authenticatedRequest(`${API_BASE_URL}/api/profile/update/`, {
         method: 'PATCH',
         body: JSON.stringify({ phone: newPhone }),
