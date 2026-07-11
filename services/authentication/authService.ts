@@ -64,7 +64,7 @@ class AuthService {
   // mensaje que un fallo de red real ('Network request failed'), para que
   // los services que ya manejan ese caso (ej. jornadaService) sigan
   // funcionando sin cambios.
-  private async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  private async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 20000): Promise<Response> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
