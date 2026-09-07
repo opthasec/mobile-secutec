@@ -56,7 +56,7 @@ const formatDuracion = (segundos: number | null) => {
   if (segundos == null) return '—';
   const h = Math.floor(segundos / 3600);
   const m = Math.floor((segundos % 3600) / 60);
-  return `${m}m`;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
 const calcDuracionVisita = (entrada: string, salida: string | null) => {
